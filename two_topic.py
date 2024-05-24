@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-#pip install rclpy PyQt5
+# pip install rclpy PyQt5
 import sys
 import rclpy
 from rclpy.node import Node
@@ -20,6 +20,10 @@ class BagRecorder(Node):
             self.process = subprocess.Popen(['ros2', 'bag', 'record'] + self.topic_names)
             self.get_logger().info(f"Started recording {', '.join(self.topic_names)}")
             self.info_label.setText(f"Started recording {', '.join(self.topic_names)}")
+        else:
+            missing_topics = [topic for topic in self.topic_names if not self.topic_exists(topic)]
+            self.get_logger().error(f"Topics not found: {', '.join(missing_topics)}")
+            self.info_label.setText(f"Topics not found: {', '.join(missing_topics)}")
 
     def stop_recording(self):
         if self.process is not None:
@@ -33,7 +37,9 @@ class BagRecorder(Node):
         topics = self.get_topic_names_and_types()
         for topic, types in topics:
             if topic == topic_name:
+                self.get_logger().info(f"Found topic: {topic_name}")
                 return True
+        self.get_logger().info(f"Topic not found: {topic_name}")
         return False
 
 class MainWindow(QWidget):
@@ -82,7 +88,8 @@ class MainWindow(QWidget):
                 self.is_recording = True
                 self.update_button_styles()
             else:
-                QMessageBox.warning(self, "Topic Not Found", "One or more topics do not exist.")
+                missing_topics = [topic for topic in self.node.topic_names if not self.node.topic_exists(topic)]
+                QMessageBox.warning(self, "Topic Not Found", f"One or more topics do not exist: {', '.join(missing_topics)}")
 
     def stop_recording(self):
         if self.is_recording:
@@ -116,7 +123,7 @@ def main(args=None):
     rclpy.init(args=args)
 
     app = QApplication(sys.argv)
-    topic_names = ['/image/rgb', '/zed_kitchen/zed_node_kitchen/body_trk/skeletons']  # Set the topic names here
+    topic_names = ['/zed_kitchen/zed_node_kitchen/left_raw/image_raw_color', '/zed_kitchen/zed_node_kitchen/body_trk/skeletons']  # Set the topic names here
     main_window = MainWindow(None)
     node = BagRecorder(topic_names, main_window.info_label)
     main_window.node = node
