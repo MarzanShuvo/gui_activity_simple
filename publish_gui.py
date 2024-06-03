@@ -3,44 +3,35 @@
 import sys
 import rclpy
 from rclpy.node import Node
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QLabel, QSizePolicy, QSpacerItem, QMessageBox
+from rclpy.executors import SingleThreadedExecutor
+from std_msgs.msg import Int64  # Import the message type
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QLabel, QSizePolicy, QSpacerItem
 from PyQt5.QtGui import QIcon
-from PyQt5.QtCore import QSize, Qt
-import subprocess
+from PyQt5.QtCore import QSize, Qt, QTimer
 
 class BagRecorder(Node):
-    def __init__(self, topic_names, info_label):
+    def __init__(self, info_label):
         super().__init__('bag_recorder')
-        self.topic_names = topic_names
-        self.process = None
         self.info_label = info_label
+        self.publisher_ = self.create_publisher(Int64, 'recording_status', 10)  # Create the publisher
+        self.current_status = 0  # Initialize the current status to 0
+        self.timer = self.create_timer(1.0, self.publish_status)  # Set up the timer to call publish_status every second
 
     def start_recording(self):
-        if self.process is None and all(self.topic_exists(topic) for topic in self.topic_names):
-            self.process = subprocess.Popen(['ros2', 'bag', 'record'] + self.topic_names)
-            self.get_logger().info(f"Started recording {', '.join(self.topic_names)}")
-            self.info_label.setText(f"Started recording {', '.join(self.topic_names)}")
-        else:
-            missing_topics = [topic for topic in self.topic_names if not self.topic_exists(topic)]
-            self.get_logger().error(f"Topics not found: {', '.join(missing_topics)}")
-            self.info_label.setText(f"Topics not found: {', '.join(missing_topics)}")
+        self.current_status = 1  # Update the current status to 1
+        self.info_label.setText("Started recording")
+        self.get_logger().info("Started recording")
 
     def stop_recording(self):
-        if self.process is not None:
-            self.process.terminate()
-            self.process.wait()
-            self.process = None
-            self.get_logger().info(f"Stopped recording {', '.join(self.topic_names)}")
-            self.info_label.setText(f"Stopped recording {', '.join(self.topic_names)}")
+        self.current_status = 0  # Update the current status to 0
+        self.info_label.setText("Stopped recording")
+        self.get_logger().info("Stopped recording")
 
-    def topic_exists(self, topic_name):
-        topics = self.get_topic_names_and_types()
-        for topic, types in topics:
-            if topic == topic_name:
-                self.get_logger().info(f"Found topic: {topic_name}")
-                return True
-        self.get_logger().info(f"Topic not found: {topic_name}")
-        return False
+    def publish_status(self):
+        msg = Int64()
+        msg.data = self.current_status
+        self.publisher_.publish(msg)
+        self.get_logger().info(f"Published status: {self.current_status}")
 
 class MainWindow(QWidget):
     def __init__(self, node):
@@ -81,15 +72,19 @@ class MainWindow(QWidget):
         self.is_recording = False
         self.update_button_styles()
 
+        # Create a QTimer to call rclpy.spin_once periodically
+        self.ros_timer = QTimer(self)
+        self.ros_timer.timeout.connect(self.spin_ros)
+        self.ros_timer.start(100)  # Spin at 10 Hz
+
+    def spin_ros(self):
+        rclpy.spin_once(self.node, timeout_sec=0)
+
     def start_recording(self):
         if not self.is_recording:
-            if all(self.node.topic_exists(topic) for topic in self.node.topic_names):
-                self.node.start_recording()
-                self.is_recording = True
-                self.update_button_styles()
-            else:
-                missing_topics = [topic for topic in self.node.topic_names if not self.node.topic_exists(topic)]
-                QMessageBox.warning(self, "Topic Not Found", f"One or more topics do not exist: {', '.join(missing_topics)}")
+            self.node.start_recording()
+            self.is_recording = True
+            self.update_button_styles()
 
     def stop_recording(self):
         if self.is_recording:
@@ -123,15 +118,18 @@ def main(args=None):
     rclpy.init(args=args)
 
     app = QApplication(sys.argv)
-    topic_names = ['/zed_doorway/zed_node_doorway/left_raw/image_raw_color', '/zed_doorway/zed_node_doorway/body_trk/skeletons']  # Set the topic names here
     main_window = MainWindow(None)
-    node = BagRecorder(topic_names, main_window.info_label)
+    node = BagRecorder(main_window.info_label)
     main_window.node = node
     main_window.show()
 
-    app.exec_()
+    executor = SingleThreadedExecutor()
+    executor.add_node(node)
 
-    rclpy.shutdown()
+    try:
+        app.exec_()
+    finally:
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
