@@ -11,7 +11,7 @@ import schedule
 IMAGE_NAME = 'olagh/zed_docker:env_var'
 CONTAINER_DIRECTORY = '/root/ros2_ws/rosbag_files'
 HOST_DIRECTORY = '/home/jetson/ros_bags'
-CHECK_INTERVAL = 10
+CHECK_INTERVAL = 10*60
 LOG_FILE = 'rosbag_mover.log'
 
 # Setup logging
@@ -86,20 +86,20 @@ def move_new_rosbag_folders():
     except Exception as e:
         log_and_print(f"Error: {e}")
 
-def run_for_10_minutes():
-    log_and_print("Starting 10-minute run.")
+def run_for_30_minutes():
+    log_and_print("Starting 30-minute run.")
     start_time = datetime.now()
-    end_time = start_time + timedelta(minutes=10)
+    end_time = start_time + timedelta(minutes=30)
     
     while datetime.now() < end_time:
         move_new_rosbag_folders()
         time.sleep(CHECK_INTERVAL)  # Wait for the specified interval before checking again
     
-    log_and_print("Completed 10-minute run.")
+    log_and_print("Completed 30-minute run.")
 
 def schedule_task():
     log_and_print("Scheduling task to run every 1 hours.")
-    schedule.every(1).hours.do(run_for_10_minutes)  # Schedule the function to run every 10 minutes
+    schedule.every(7).hours.do(run_for_30_minutes)  # Schedule the function to run every 30 minutes
 
     while True:
         schedule.run_pending()

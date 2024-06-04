@@ -112,20 +112,20 @@ class MainWindow(QWidget):
             if self.node.current_status == 1:
                 self.is_recording = True
                 self.update_button_styles()
-                self.recording_timer.start(20*50*1000)  # Stop recording after 20 minutes
+                self.recording_timer.start(10*50*1000)  # Stop recording after 10 minutes
 
     def stop_recording(self):
         if self.is_recording:
             self.node.stop_recording()
             self.is_recording = False
             self.start_button.setEnabled(False)
-            self.start_timer.start(5*60*1000)  # Disable start button for 1 minute
+            self.start_timer.start(5*60*1000)  # Disable start button for 5 minute
             self.recording_timer.stop()  # Stop the recording timer
             self.update_button_styles()
 
     def auto_stop_recording(self):
         self.stop_recording()
-        self.info_label.setText("Recording stopped automatically after 20 minutes")
+        self.info_label.setText("Recording stopped automatically after 10 minutes")
 
     def enable_start_button(self):
         self.start_button.setEnabled(True)
