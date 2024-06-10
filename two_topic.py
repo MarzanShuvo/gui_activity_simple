@@ -123,7 +123,7 @@ def main(args=None):
     rclpy.init(args=args)
 
     app = QApplication(sys.argv)
-    topic_names = ['/zed_doorway/zed_node_doorway/left_raw/image_raw_color', '/zed_doorway/zed_node_doorway/body_trk/skeletons']  # Set the topic names here
+    topic_names = ['/zed_kitchen/zed_node_kitchen/left/image_rect_color', '/zed_kitchen/zed_node_kitchen/body_trk/skeletons']  # Set the topic names here
     main_window = MainWindow(None)
     node = BagRecorder(topic_names, main_window.info_label)
     main_window.node = node
