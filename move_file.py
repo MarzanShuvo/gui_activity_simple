@@ -90,7 +90,7 @@ def run_for_30_minutes():
     log_and_print("Starting 30-minute run.")
     start_time = datetime.now()
     end_time = start_time + timedelta(minutes=30)
-    
+
     while datetime.now() < end_time:
         move_new_rosbag_folders()
         time.sleep(CHECK_INTERVAL)  # Wait for the specified interval before checking again

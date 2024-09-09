@@ -4,8 +4,8 @@ import sys
 import rclpy
 from rclpy.node import Node
 from rclpy.executors import SingleThreadedExecutor
-from std_msgs.msg import Int64  # Import the message type
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QLabel, QSizePolicy, QSpacerItem
+from std_msgs.msg import Int64, String
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QLabel, QSizePolicy, QSpacerItem, QLineEdit, QMessageBox
 from PyQt5.QtGui import QIcon
 from PyQt5.QtCore import QSize, Qt, QTimer
 
@@ -13,30 +13,45 @@ class BagRecorder(Node):
     def __init__(self, info_label, topic_names):
         super().__init__('bag_recorder')
         self.info_label = info_label
-        self.publisher_ = self.create_publisher(Int64, 'recording_status', 10)  # Create the publisher
-        self.current_status = 0  # Initialize the current status to 0
-        self.timer = self.create_timer(1.0, self.publish_status)  # Set up the timer to call publish_status every second
+        self.publisher_status = self.create_publisher(Int64, 'recording_status', 10)
+        self.publisher_name = self.create_publisher(String, 'recording_name', 10)
+        self.current_status = 0
+        self.timer = self.create_timer(1.0, self.publish_data)
         self.topic_names = topic_names
+        self.name_to_publish = ""
+        self.used_names = []  # List to store used names
+
+    def set_name(self, name):
+        self.name_to_publish = name
+        self.used_names.append(name)  # Store the name in the list of used names
 
     def start_recording(self):
         if self.topics_available():
-            self.current_status = 1  # Update the current status to 1
-            self.info_label.setText("Started recording")
+            self.current_status = 1
+            self.info_label.setText(f"Started recording with name: {self.name_to_publish}")
             self.get_logger().info("Started recording")
         else:
             self.info_label.setText("One or more topics not available")
             self.get_logger().info("One or more topics not available")
 
     def stop_recording(self):
-        self.current_status = 0  # Update the current status to 0
+        self.current_status = 0
         self.info_label.setText("Stopped recording")
         self.get_logger().info("Stopped recording")
 
-    def publish_status(self):
-        msg = Int64()
-        msg.data = self.current_status
-        self.publisher_.publish(msg)
+    def publish_data(self):
+        msg_status = Int64()
+        msg_status.data = self.current_status
+        self.publisher_status.publish(msg_status)
         self.get_logger().info(f"Published status: {self.current_status}")
+
+        if self.current_status == 1 and self.name_to_publish:
+            msg_name = String()
+            msg_name.data = self.name_to_publish
+            self.publisher_name.publish(msg_name)
+            self.get_logger().info(f"Published name: {self.name_to_publish}")
+        elif self.current_status == 0:
+            self.get_logger().info("Recording is inactive, name will not be published")
 
     def topics_available(self):
         available_topics = self.get_topic_names_and_types()
@@ -60,21 +75,24 @@ class MainWindow(QWidget):
 
         self.button_layout = QHBoxLayout()
 
+        self.name_input = QLineEdit(self)
+        self.name_input.setPlaceholderText("Enter recording name")
+        self.layout.addWidget(self.name_input)
+
         self.start_button = QPushButton("")
-        self.start_button.setIcon(QIcon('start_button.png'))  # Set the start button icon
+        self.start_button.setIcon(QIcon('start_button.png'))
         self.start_button.clicked.connect(self.start_recording)
         self.start_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.start_button.setMaximumSize(200, 200)
         self.button_layout.addWidget(self.start_button)
 
         self.stop_button = QPushButton("")
-        self.stop_button.setIcon(QIcon('stop_button.png'))  # Set the stop button icon
+        self.stop_button.setIcon(QIcon('stop_button.png'))
         self.stop_button.clicked.connect(self.stop_recording)
         self.stop_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.stop_button.setMaximumSize(200, 200)
         self.button_layout.addWidget(self.stop_button)
 
-        # Center the buttons vertically and horizontally
         self.layout.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
         self.layout.addLayout(self.button_layout)
         self.layout.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
@@ -86,17 +104,14 @@ class MainWindow(QWidget):
 
         self.is_recording = False
 
-        # Create a QTimer to call rclpy.spin_once periodically
         self.ros_timer = QTimer(self)
         self.ros_timer.timeout.connect(self.spin_ros)
-        self.ros_timer.start(100)  # Spin at 10 Hz
+        self.ros_timer.start(100)
 
-        # Timer to enable start button after 5 minute
         self.start_timer = QTimer(self)
         self.start_timer.setSingleShot(True)
         self.start_timer.timeout.connect(self.enable_start_button)
 
-        # Timer to stop recording after 20 minutes
         self.recording_timer = QTimer(self)
         self.recording_timer.setSingleShot(True)
         self.recording_timer.timeout.connect(self.auto_stop_recording)
@@ -107,20 +122,32 @@ class MainWindow(QWidget):
         rclpy.spin_once(self.node, timeout_sec=0)
 
     def start_recording(self):
+        name = self.name_input.text()
+
+        # Check if the name is unique
+        if not name:
+            self.info_label.setText("Please enter a name before starting")
+            return
+        elif name in self.node.used_names:
+            QMessageBox.warning(self, "Duplicate Name", "This name has already been used. Please enter a unique name.")
+            return
+
+        self.node.set_name(name)
+
         if not self.is_recording:
             self.node.start_recording()
             if self.node.current_status == 1:
                 self.is_recording = True
                 self.update_button_styles()
-                self.recording_timer.start(10*50*1000)  # Stop recording after 10 minutes
+                self.recording_timer.start(10*60*1000)
 
     def stop_recording(self):
         if self.is_recording:
             self.node.stop_recording()
             self.is_recording = False
             self.start_button.setEnabled(False)
-            self.start_timer.start(5*60*1000)  # Disable start button for 5 minute
-            self.recording_timer.stop()  # Stop the recording timer
+            self.start_timer.start(30*1000)
+            self.recording_timer.stop()
             self.update_button_styles()
 
     def auto_stop_recording(self):
@@ -144,9 +171,8 @@ class MainWindow(QWidget):
             self.stop_button.setStyleSheet("background-color: red")
 
     def resizeEvent(self, event):
-        # Calculate the size for the icons based on the maximum button size
         button_size = min(self.start_button.maximumWidth(), self.start_button.maximumHeight())
-        icon_size = button_size - 20  # Adjust for padding
+        icon_size = button_size - 20
 
         self.start_button.setIconSize(QSize(icon_size, icon_size))
         self.stop_button.setIconSize(QSize(icon_size, icon_size))
@@ -157,8 +183,12 @@ def main(args=None):
     rclpy.init(args=args)
 
     app = QApplication(sys.argv)
-    topic_names = ['/zed_kitchen/zed_node_kitchen/left/image_rect_color', '/zed_kitchen/zed_node_kitchen/body_trk/skeletons', '/zed_living_room/zed_node_living_room/left/image_rect_color', '/zed_living_room/zed_node_living_room/body_trk/skeletons',
-                   '/zed_dining/zed_node_dining/left/image_rect_color', '/zed_dining/zed_node_dining/body_trk/skeletons']  # Replace with your topic names
+    topic_names = [
+        '/zed_doorway/zed_node_doorway/left/image_rect_color',
+        '/zed_doorway/zed_node_doorway/body_trk/skeletons',
+        '/zed_kitchen/zed_node_kitchen/left/image_rect_color',
+        '/zed_kitchen/zed_node_kitchen/body_trk/skeletons'
+    ]
     main_window = MainWindow(None)
     node = BagRecorder(main_window.info_label, topic_names)
     main_window.node = node
